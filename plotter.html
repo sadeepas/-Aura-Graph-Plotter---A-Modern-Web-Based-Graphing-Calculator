@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura Graph Plotter - Pro Tech</title>
+<link rel="icon" type="image/x-icon" href="plotterico.ico">
+
+  <!-- Core Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-crosshair@3.0.1/dist/chartjs-plugin-crosshair.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/13.2.0/math.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!--  CSS for Theme -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    
+    body { 
+        font-family: 'Inter', sans-serif;
+        background-color: #0d1931; /* Slate 950 */
+        background-image: radial-gradient(circle at 50% 0, rgba(20, 83, 126, 0.3), transparent 50%);
+    }
+
+    /* Keyframe Animations */
+    @keyframes spin3d { 0% { transform: rotateX(0deg) rotateY(0deg); } 100% { transform: rotateX(360deg) rotateY(360deg); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+    @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; translateY(0); } }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes canvas-reveal { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+    
+    .animate-in { animation: fade-in-up 0.6s ease-out both; }
+    .animate-fade-in { animation: fade-in 0.5s ease-out both; }
+    .canvas-active { animation: canvas-reveal 0.8s ease-out both; }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; } 
+    ::-webkit-scrollbar-track { background: #1e293b; } /* Slate 800 */
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; } /* Slate 700 */
+    ::-webkit-scrollbar-thumb:hover { background: #475569; } /* Slate 600 */
+    
+    /* Glassmorphism */
+    .glass-pane {
+        background: rgba(30, 41, 59, 0.6);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(71, 85, 105, 0.5);
+    }
+    
+    /* Input Glow on Focus */
+    .input-glow:focus-within {
+        box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+        border-color: #0891b2;
+    }
+
+    /* Custom Slider Styles */
+    input[type=range] { -webkit-appearance: none; background: transparent; }
+    input[type=range]:focus { outline: none; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; cursor: pointer; background: #334155; border-radius: 5px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; border: 2px solid #0d1931; height: 18px; width: 18px; border-radius: 50%; background: #06b6d4; cursor: pointer; margin-top: -6px; transition: transform 0.2s ease; }
+    input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.1); }
+    input[type=range]:active::-webkit-slider-thumb { transform: scale(0.95); }
+
+    /* --- NEW LOADING SCREEN STYLES --- */
+    #startupLoadingScreen {
+        perspective: 1000px;
+        transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+    }
+    #startupLoadingScreen.hiding {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    #loadingCanvas {
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        z-index: 0;
+    }
+    .hud-corners::before, .hud-corners::after {
+        content: '';
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        border: 2px solid rgba(6, 182, 212, 0.3);
+        border-radius: 4px;
+        animation: pulse-glow 3s infinite ease-in-out;
+    }
+    .hud-corners::before { top: 20px; left: 20px; border-right: none; border-bottom: none; }
+    .hud-corners::after { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+    .cube-spinner { width: 80px; height: 80px; position: relative; transform-style: preserve-3d; animation: spin3d 8s linear infinite; }
+    .cube-face { position: absolute; width: 80px; height: 80px; opacity: 0.85; border: 1px solid #0891b2; background-color: rgba(6, 182, 212, 0.2); }
+    .front { transform: translateZ(40px); } 
+    .back { transform: rotateY(180deg) translateZ(40px); } 
+    .right { transform: rotateY(90deg) translateZ(40px); } 
+    .left { transform: rotateY(-90deg) translateZ(40px); } 
+    .top { transform: rotateX(90deg) translateZ(40px); } 
+    .bottom { transform: rotateX(-90deg) translateZ(40px); }
+
+    @keyframes fill-progress { from { width: 0%; } to { width: 100%; } }
+    #loading-progress-fill {
+        animation: fill-progress 3.5s ease-out forwards;
+    }
+  </style>
+</head>
+
+<body class="text-slate-300 antialiased">
+
+  <!-- NEW Startup Loading Screen -->
+  <div id="startupLoadingScreen" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 overflow-hidden hud-corners">
+      <canvas id="loadingCanvas"></canvas>
+      <div class="z-10 flex flex-col items-center justify-center text-center">
+        <div class="cube-spinner">
+            <div class="cube-face front"></div><div class="cube-face back"></div><div class="cube-face right"></div><div class="cube-face left"></div><div class="cube-face top"></div><div class="cube-face bottom"></div>
+        </div>
+        <h2 class="mt-10 text-3xl font-bold tracking-wider text-slate-100">AURA PLOTTER</h2>
+        <p id="loading-text-sequence" class="mt-4 text-cyan-300 font-mono min-h-[24px]"></p>
+        <div id="loading-progress-bar" class="w-64 h-2 mt-6 bg-cyan-900/50 rounded-full overflow-hidden">
+            <div id="loading-progress-fill" class="h-full bg-cyan-400 rounded-full shadow-[0_0_10px_#06b6d4]"></div>
+        </div>
+      </div>
+  </div>
+
+  <!-- Centered Modal Loading Screen (for in-app actions) -->
+  <div id="loadingScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm transition-opacity duration-300 ease-out opacity-0 pointer-events-none hidden">
+      <div id="loadingBox" class="flex flex-col items-center gap-6 p-8 rounded-2xl glass-pane shadow-2xl transition-all duration-300 ease-out scale-95 opacity-0">
+          <div class="cube-spinner !w-[60px] !h-[60px]">
+            <div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 front !translate-z-[30px]"></div><div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 back !-translate-z-[30px]"></div><div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 right !rotate-y-90 !translate-z-[30px]"></div><div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 left !-rotate-y-90 !translate-z-[30px]"></div><div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 top !rotate-x-90 !translate-z-[30px]"></div><div class="cube-face !w-[60px] !h-[60px] !border-cyan-600 bottom !-rotate-x-90 !translate-z-[30px]"></div>
+          </div>
+          <p id="loadingText" class="text-lg font-semibold tracking-wide text-slate-200">Plotting...</p>
+      </div>
+  </div>
+
+  <!-- Help Modal -->
+  <div id="helpModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-opacity duration-300 ease-out opacity-0 pointer-events-none hidden">
+      <div class="glass-pane border-slate-600 rounded-2xl shadow-2xl max-w-3xl w-full transform transition-all duration-300 ease-out scale-95">
+          <div class="flex justify-between items-center p-4 border-b border-slate-700">
+              <h2 class="text-2xl font-bold text-cyan-400">Graph Plotter Guide</h2>
+              <button id="closeHelpBtn" class="text-slate-400 hover:text-white transition-colors text-2xl leading-none">×</button>
+          </div>
+          <div id="helpModalContent" class="p-6 space-y-6 text-slate-300 max-h-[75vh] overflow-y-auto">
+              <!-- Content will be injected by JavaScript -->
+          </div>
+      </div>
+  </div>
+
+  <!-- Main App Layout -->
+  <div id="appContainer" class="min-h-screen opacity-0">
+    <div class="lg:grid lg:grid-cols-12 lg:gap-8 p-4 sm:p-6 lg:p-8">
+
+      <!-- Left Sidebar: Controls -->
+      <aside class="lg:col-span-4 xl:col-span-3 space-y-6">
+        <header data-animate class="text-center lg:text-left">
+            <h1 class="text-3xl lg:text-4xl font-black tracking-tighter text-slate-100">Aura Graph Plotter</h1>
+            <p class="text-slate-400 mt-1">An advanced multi-mode graphing tool.</p>
+        </header>
+
+        <!-- Mode Switcher -->
+        <div data-animate class="space-y-2">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 px-3">Mode</h2>
+            <nav id="modeSwitcher" class="flex flex-col space-y-1">
+                <button data-mode="cartesian" class="mode-btn group bg-cyan-600/50 text-white">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8"/></svg>
+                    <span>Standard (Cartesian)</span>
+                </button>
+                 <button data-mode="polar" class="mode-btn group">
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/><path d="M12 10.586L15.536 7.05 16.95 8.464 13.414 12l3.536 3.536-1.414 1.414L12 13.414l-3.536 3.536-1.414-1.414L10.586 12 7.05 8.464l1.414-1.414L12 10.586z"/></svg>
+                    <span>Polar Coordinates</span>
+                </button>
+                 <button data-mode="transform" class="mode-btn group">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5-5"/></svg>
+                    <span>Transformation Sim</span>
+                </button>
+                 <button data-mode="intersect" class="mode-btn group">
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16.632 7.837 18 6.47l-1.402-1.402-1.368 1.368L12 2.172 7.77 6.435 6.402 5.067 5 6.47l1.368 1.367L2.105 12l4.263 4.163L5 17.53l1.402 1.402 1.368-1.368L12 21.828l4.23-4.263 1.368 1.368 1.402-1.402-1.368-1.367L21.895 12l-5.263-4.163zM12 13a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+                    <span>Intersection Finder</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Dynamic Control Panels -->
+        <div id="controlPanelsContainer">
+            <!-- Standard / Polar Panel -->
+            <div id="standard-panel" class="control-panel space-y-4">
+                <div class="relative group input-glow rounded-lg border border-slate-600 transition-all">
+                     <span id="equationPrefix" class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">f(x)=</span>
+                     <input type="text" id="equation" placeholder="sin(x) * x" class="w-full bg-slate-800/50 pl-12 pr-4 py-3 text-lg text-white placeholder-slate-500 focus:outline-none rounded-lg">
+                </div>
+                <select id="history" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500 transition-all duration-300 appearance-none bg-no-repeat bg-right" style="background-image: url('data:image/svg+xml;utf8,<svg fill="%2394a3b8" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-position: right 1rem center;"></select>
+                <div id="analysisControls" class="grid grid-cols-3 gap-2">
+                    <button id="derivativeBtn" title="Plot the derivative" class="analysis-btn">f'(x)</button>
+                    <button id="integralBtn" title="Plot the integral" class="analysis-btn">∫f(x)dx</button>
+                    <button id="analyzeBtn" title="Find roots, extrema, and area" class="analysis-btn">Analyze</button>
+                </div>
+            </div>
+            
+            <!-- Transform Panel -->
+            <div id="transform-panel" class="control-panel hidden space-y-4 glass-pane p-4 rounded-xl">
+                 <div class="relative group input-glow rounded-lg border border-slate-600 transition-all">
+                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">f(x)=</span>
+                     <input type="text" id="transformEquation" value="x^2" placeholder="Base function" class="w-full bg-transparent pl-12 pr-4 py-2 text-white placeholder-slate-500 focus:outline-none rounded-lg">
+                </div>
+                <div id="transformedEquationDisplay" class="text-center font-mono p-2 bg-slate-900/70 rounded-md text-cyan-300 text-sm">g(x) = ...</div>
+                <div class="space-y-3">
+                    <div class="slider-group"><label for="sliderA" class="flex justify-between text-sm"><span>a (Vert. Stretch)</span><span id="sliderAVal" class="font-semibold text-cyan-400">1</span></label><input id="sliderA" type="range" min="-3" max="3" value="1" step="0.1" class="w-full"></div>
+                    <div class="slider-group"><label for="sliderB" class="flex justify-between text-sm"><span>b (Horiz. Stretch)</span><span id="sliderBVal" class="font-semibold text-cyan-400">1</span></label><input id="sliderB" type="range" min="-3" max="3" value="1" step="0.1" class="w-full"></div>
+                    <div class="slider-group"><label for="sliderC" class="flex justify-between text-sm"><span>c (Horiz. Shift)</span><span id="sliderCVal" class="font-semibold text-cyan-400">0</span></label><input id="sliderC" type="range" min="-10" max="10" value="0" step="0.1" class="w-full"></div>
+                    <div class="slider-group"><label for="sliderD" class="flex justify-between text-sm"><span>d (Vert. Shift)</span><span id="sliderDVal" class="font-semibold text-cyan-400">0</span></label><input id="sliderD" type="range" min="-10" max="10" value="0" step="0.1" class="w-full"></div>
+                </div>
+            </div>
+
+            <!-- Intersect Panel -->
+            <div id="intersect-panel" class="control-panel hidden space-y-3">
+                 <div class="relative group input-glow rounded-lg border border-slate-600 transition-all">
+                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-cyan-400">f(x)=</span>
+                     <input type="text" id="intersectEq1" value="x^2 - 4" class="w-full bg-slate-800/50 pl-12 pr-4 py-3 text-lg text-white placeholder-slate-500 focus:outline-none rounded-lg">
+                </div>
+                <div class="relative group input-glow rounded-lg border border-slate-600 transition-all">
+                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-fuchsia-400">g(x)=</span>
+                     <input type="text" id="intersectEq2" value="-x + 2" class="w-full bg-slate-800/50 pl-12 pr-4 py-3 text-lg text-white placeholder-slate-500 focus:outline-none rounded-lg">
+                </div>
+            </div>
+        </div>
+
+        <!-- Common Controls -->
+        <hr class="border-slate-700">
+        <div data-animate id="rangeControls" class="space-y-3">
+            <legend id="rangeLegend" class="font-semibold text-lg text-cyan-400 px-1">Cartesian Range</legend>
+            <div class="grid grid-cols-3 gap-3">
+                <div class="flex flex-col"><label id="rangeLabel1" class="text-xs text-slate-400 mb-1 px-1">X-Min:</label><input type="number" id="xMin" value="-10" class="control-input"></div>
+                <div class="flex flex-col"><label id="rangeLabel2" class="text-xs text-slate-400 mb-1 px-1">X-Max:</label><input type="number" id="xMax" value="10" class="control-input"></div>
+                <div class="flex flex-col"><label id="rangeLabel3" class="text-xs text-slate-400 mb-1 px-1">Step:</label><input type="number" id="step" value="0.05" class="control-input"></div>
+            </div>
+        </div>
+
+        <div data-animate>
+             <button id="plotBtn" class="plot-btn group w-full">
+                <span id="plotBtnText">Plot Graph</span>
+                <svg id="plotBtnSpinner" class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </button>
+        </div>
+      </aside>
+
+      <!-- Right Side: Graph and Results -->
+      <main class="lg:col-span-8 xl:col-span-9 mt-8 lg:mt-0 flex flex-col gap-6">
+        <div data-animate class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button id="clearBtn" class="control-btn group"><svg class="w-5 h-5 mr-2 text-slate-400 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>Clear</button>
+            <button id="exportBtn" class="control-btn group"><svg class="w-5 h-5 mr-2 text-slate-400 group-hover:text-green-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Export</button>
+            <button id="gridToggleBtn" class="control-btn group"><svg class="w-5 h-5 mr-2 text-slate-400 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"></path></svg>Grid</button>
+            <button id="helpBtn" class="control-btn group"><svg class="w-5 h-5 mr-2 text-slate-400 group-hover:text-yellow-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Help</button>
+        </div>
+        
+        <div data-animate id="resultsWrapper" class="glass-pane p-4 rounded-xl flex-grow-0">
+            <h3 class="flex items-center gap-2 text-slate-400 font-semibold mb-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L12 11.586l3.293-3.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>Stats & Analysis</h3>
+            <div id="results" class="text-sm whitespace-pre-wrap font-mono transition-all duration-500 min-h-[74px] text-slate-300"></div>
+        </div>
+
+        <div data-animate class="relative flex-grow glass-pane rounded-xl shadow-inner overflow-hidden min-h-[500px]">
+            <canvas id="graphCanvas"></canvas>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <script>
+    // --- UI Element Selectors and State ---
+    const UI = { 
+        // Loaders & Main Containers
+        startupLoadingScreen: document.getElementById('startupLoadingScreen'), loadingTextSequence: document.getElementById('loading-text-sequence'), appContainer: document.getElementById('appContainer'), loadingScreen: document.getElementById('loadingScreen'), loadingBox: document.getElementById('loadingBox'), loadingText: document.getElementById('loadingText'),
+        // Mode Switching
+        modeSwitcher: document.getElementById('modeSwitcher'), controlPanels: document.querySelectorAll('.control-panel'),
+        // Buttons
+        plotBtn: document.getElementById('plotBtn'), plotBtnText: document.getElementById('plotBtnText'), plotBtnSpinner: document.getElementById('plotBtnSpinner'), clearBtn: document.getElementById('clearBtn'), exportBtn: document.getElementById('exportBtn'), gridToggleBtn: document.getElementById('gridToggleBtn'), helpBtn: document.getElementById('helpBtn'),
+        // Standard/Polar Controls
+        standardPanel: document.getElementById('standard-panel'), equation: document.getElementById('equation'), equationPrefix: document.getElementById('equationPrefix'), history: document.getElementById('history'),
+        // Analysis
+        analysisControls: document.getElementById('analysisControls'), derivativeBtn: document.getElementById('derivativeBtn'), integralBtn: document.getElementById('integralBtn'), analyzeBtn: document.getElementById('analyzeBtn'), 
+        // Transform Controls
+        transformPanel: document.getElementById('transform-panel'), transformEquation: document.getElementById('transformEquation'), transformedEqDisplay: document.getElementById('transformedEquationDisplay'),
+        sliders: { a: document.getElementById('sliderA'), b: document.getElementById('sliderB'), c: document.getElementById('sliderC'), d: document.getElementById('sliderD') },
+        sliderVals: { a: document.getElementById('sliderAVal'), b: document.getElementById('sliderBVal'), c: document.getElementById('sliderCVal'), d: document.getElementById('sliderDVal') },
+        // Intersect Controls
+        intersectPanel: document.getElementById('intersect-panel'), intersectEq1: document.getElementById('intersectEq1'), intersectEq2: document.getElementById('intersectEq2'),
+        // Common Controls
+        rangeControls: document.getElementById('rangeControls'), rangeLegend: document.getElementById('rangeLegend'), rangeLabel1: document.getElementById('rangeLabel1'), rangeLabel2: document.getElementById('rangeLabel2'), rangeLabel3: document.getElementById('rangeLabel3'),
+        xMin: document.getElementById('xMin'), xMax: document.getElementById('xMax'), step: document.getElementById('step'),
+        // Output
+        results: document.getElementById('results'), canvas: document.getElementById('graphCanvas'),
+        // Modal
+        helpModal: document.getElementById('helpModal'), helpModalContent: document.getElementById('helpModalContent'), closeHelpBtn: document.getElementById('closeHelpBtn'), 
+    };
+    const state = { chart: null, type: 'cartesian', history: [], showGrid: true, expressionCache: new Map(), plotTime: 0, pointCount: 0, analysisResults: null };
+    
+    // --- Math and Chart Configuration ---
+    math.import({ cot: x => 1 / math.tan(x), sec: x => 1 / math.cos(x), csc: x => 1 / math.sin(x) }, { override: true });
+    const ctx = UI.canvas.getContext('2d');
+    const chartConfig = {
+        plugins: [ChartZoom],
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            elements: { line: { tension: 0.1, borderWidth: 2.5 } },
+            plugins: {
+                legend: { labels: { color: '#e2e8f0', font: { size: 14, family: 'Inter' } } },
+                zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } },
+                tooltip: { enabled: true, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', titleFont: { size: 14, weight: 'bold', family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 },
+                crosshair: { line: { color: '#f59e0b', width: 1.5 }, sync: { enabled: false }, zoom: { enabled: false }, snap: { enabled: true } }
+            },
+            scales: {
+                x: { grid: { color: 'rgba(51, 65, 85, 0.5)' }, title: { display: true, text: 'x', color: '#94a3b8', font: { size: 14, family: 'Inter' } }, ticks: { color: '#cbd5e1', font: { family: 'Inter' } } },
+                y: { grid: { color: 'rgba(51, 65, 85, 0.5)' }, title: { display: true, text: 'y', color: '#94a3b8', font: { size: 14, family: 'Inter' } }, ticks: { color: '#cbd5e1', font: { family: 'Inter' } } }
+            }
+        }
+    };
+
+    // --- NEW LOADING SCREEN LOGIC ---
+    function initConstellation() {
+        const canvas = document.getElementById('loadingCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        const numParticles = window.innerWidth > 768 ? 100 : 50;
+        const connectDistance = 100;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            createParticles();
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = Math.random() * 0.5 - 0.25;
+                this.vy = Math.random() * 0.5 - 0.25;
+                this.radius = Math.random() * 1.5 + 1;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(6, 182, 212, 0.8)';
+                ctx.fill();
+            }
+        }
+
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function connectParticles() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < connectDistance) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(6, 182, 212, ${1 - distance / connectDistance})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            connectParticles();
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        animate();
+    }
+
+    // --- Core Application Logic ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // Apply Tailwind styles via JS for cleaner HTML
+        const applyStyles = (selector, styles) => document.querySelectorAll(selector).forEach(el => el.classList.add(...styles));
+        applyStyles('.plot-btn', ['flex', 'items-center', 'justify-center', 'px-8', 'py-3', 'bg-gradient-to-r', 'from-cyan-600', 'to-blue-600', 'hover:from-cyan-500', 'hover:to-blue-500', 'text-white', 'font-bold', 'rounded-lg', 'shadow-lg', 'hover:shadow-cyan-500/20', 'transform-gpu', 'hover:-translate-y-1', 'active:scale-95', 'transition-all', 'duration-200', 'disabled:opacity-50', 'disabled:cursor-not-allowed', 'disabled:transform-none', 'disabled:shadow-none']);
+        applyStyles('.control-btn', ['w-full', 'flex', 'items-center', 'justify-center', 'px-4', 'py-2', 'bg-slate-700/50', 'border', 'border-slate-600', 'rounded-lg', 'hover:bg-slate-600/80', 'hover:border-slate-500', 'hover:-translate-y-0.5', 'active:scale-95', 'transform-gpu', 'transition-all', 'duration-200', 'text-slate-300', 'hover:text-white', 'disabled:opacity-50', 'disabled:cursor-not-allowed', 'disabled:transform-none']);
+        applyStyles('.analysis-btn', ['flex-grow', 'px-4', 'py-2', 'bg-slate-800', 'border', 'border-slate-700', 'rounded-lg', 'hover:bg-slate-700', 'hover:border-slate-600', 'hover:-translate-y-0.5', 'active:scale-95', 'transform-gpu', 'transition-all', 'duration-200', 'text-slate-300', 'hover:text-white', 'font-semibold', 'disabled:opacity-50', 'disabled:cursor-not-allowed', 'disabled:transform-none']);
+        applyStyles('.control-input', ['w-full', 'bg-slate-900/70', 'border', 'border-slate-600', 'rounded-md', 'px-3', 'py-2', 'text-white', 'focus:outline-none', 'focus:ring-1', 'focus:ring-cyan-500', 'focus:border-cyan-500', 'transition-all']);
+        applyStyles('.mode-btn', ['flex', 'items-center', 'w-full', 'text-left', 'px-3', 'py-2.5', 'gap-3', 'font-semibold', 'rounded-md', 'transition-all', 'duration-200', 'text-slate-300', 'hover:bg-slate-700/50', 'hover:text-white']);
+        
+        // Inject help modal content
+        UI.helpModalContent.innerHTML = `
+            <div class="space-y-2">
+                  <h3 class="font-semibold text-lg text-cyan-400 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>Getting Started</h3>
+                  <p>Select a mode, enter a function, and press the plot button or <kbd class="px-2 py-1 text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded-md">Enter</kbd>.</p>
+                  <ul class="list-disc list-inside pl-4 space-y-1">
+                      <li>For **Standard (Cartesian)** plots, use \`x\` as the variable (e.g., \`sin(x) * x\`).</li>
+                      <li>For **Polar** plots, use \`t\` as the variable (e.g., \`1 + cos(t)\`).</li>
+                  </ul>
+              </div>
+              <hr class="border-slate-700/50">
+               <div class="space-y-2">
+                  <h3 class="font-semibold text-lg text-cyan-400 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5-5"/></svg>Transformation Simulator</h3>
+                  <p>Enter a base function like \`x^2\` or \`sin(x)\`. Use the sliders to transform the graph. The transformed function is \`g(x) = a * f(b * (x - c)) + d\`.</p>
+                   <ul class="list-disc list-inside pl-4 space-y-1">
+                      <li>**a:** Vertical stretch / shrink. Negative values reflect over the x-axis.</li>
+                      <li>**b:** Horizontal stretch / shrink. Negative values reflect over the y-axis.</li>
+                      <li>**c:** Horizontal shift (translation).</li>
+                      <li>**d:** Vertical shift (translation).</li>
+                  </ul>
+              </div>
+               <hr class="border-slate-700/50">
+               <div class="space-y-2">
+                  <h3 class="font-semibold text-lg text-cyan-400 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16.632 7.837 18 6.47l-1.402-1.402-1.368 1.368L12 2.172 7.77 6.435 6.402 5.067 5 6.47l1.368 1.367L2.105 12l4.263 4.163L5 17.53l1.402 1.402 1.368-1.368L12 21.828l4.23-4.263 1.368 1.368 1.402-1.402-1.368-1.367L21.895 12l-5.263-4.163zM12 13a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>Intersection Finder</h3>
+                  <p>Enter two functions, \`f(x)\` and \`g(x)\`, into the respective input boxes. The plotter will graph both and mark all points where they intersect, listing their coordinates in the stats panel.</p>
+              </div>
+              <hr class="border-slate-700/50">
+              <div class="space-y-2">
+                  <h3 class="font-semibold text-lg text-cyan-400 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1v1a1 1 0 01-1 1H6a1 1 0 01-1-1v-1H4a1 1 0 01-1-1V8a1 1 0 011-1h3a1 1 0 001-1v-.5z" /><path d="M4 11v1a1 1 0 001 1h2a1 1 0 001-1v-1H4zM8 11v1a1 1 0 001 1h2a1 1 0 001-1v-1H8zM12 11v1a1 1 0 001 1h2a1 1 0 001-1v-1h-4z" /></svg>Interactive Chart</h3>
+                   <ul class="list-disc list-inside pl-4 space-y-1">
+                      <li>**Zoom:** Use your mouse wheel or pinch-to-zoom on touch devices.</li>
+                      <li>**Pan:** Click and drag the chart to move it around.</li>
+                      <li>**Reset:** Double-click on the chart to reset the zoom and pan.</li>
+                  </ul>
+              </div>
+        `;
+        
+        // Start loading sequence
+        initConstellation();
+        const loadingMessages = [
+            'Initializing Core Libraries...',
+            'Compiling Math Engine...',
+            'Calibrating Render Canvas...',
+            'Finalizing Aura Interface...'
+        ];
+        let messageIndex = 0;
+        const interval = setInterval(() => {
+            if (messageIndex < loadingMessages.length) {
+                UI.loadingTextSequence.textContent = loadingMessages[messageIndex];
+                messageIndex++;
+            } else {
+                clearInterval(interval);
+            }
+        }, 800);
+
+        setTimeout(() => { 
+            UI.startupLoadingScreen.classList.add('hiding'); 
+            setTimeout(() => {
+                UI.startupLoadingScreen.classList.add('pointer-events-none');
+                UI.appContainer.classList.remove('opacity-0'); 
+                document.querySelectorAll('[data-animate]').forEach((el, index) => { 
+                    el.style.animationDelay = `${index * 100}ms`; 
+                    el.classList.add('animate-in'); 
+                }); 
+                handleModeChange('cartesian'); 
+                drawEmptyState(); 
+            }, 800); // Wait for fade-out transition
+        }, 3500); // Total loading time
+    });
+    
+    const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
+
+    // --- Event Listeners ---
+    UI.plotBtn.addEventListener('click', () => generatePlot());
+    UI.clearBtn.addEventListener('click', clearChart);
+    UI.exportBtn.addEventListener('click', exportChart);
+    UI.gridToggleBtn.addEventListener('click', toggleGrid);
+    
+    UI.helpBtn.addEventListener('click', () => { UI.helpModal.classList.remove('hidden', 'pointer-events-none'); setTimeout(() => { UI.helpModal.classList.remove('opacity-0'); UI.helpModal.querySelector('.glass-pane').classList.remove('scale-95'); }, 10); });
+    const closeModal = () => { UI.helpModal.classList.add('opacity-0'); UI.helpModal.querySelector('.glass-pane').classList.add('scale-95'); setTimeout(() => UI.helpModal.classList.add('hidden', 'pointer-events-none'), 300); };
+    UI.closeHelpBtn.addEventListener('click', closeModal);
+    UI.helpModal.addEventListener('click', (e) => { if (e.target === UI.helpModal) closeModal(); });
+    
+    UI.modeSwitcher.addEventListener('click', (e) => {
+        const button = e.target.closest('.mode-btn');
+        if (button && button.dataset.mode) {
+            handleModeChange(button.dataset.mode);
+        }
+    });
+
+    UI.history.addEventListener('change', e => { if (e.target.value) { UI.equation.value = e.target.value; generatePlot(); } });
+    UI.derivativeBtn.addEventListener('click', addDerivativePlot);
+    UI.integralBtn.addEventListener('click', addIntegralPlot);
+    UI.analyzeBtn.addEventListener('click', analyzeFunction);
+    
+    document.addEventListener('keydown', e => { 
+        if (e.key === 'Enter' && (document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text')) generatePlot();
+        if (e.key === 'Escape') { if (!UI.helpModal.classList.contains('hidden')) closeModal(); } 
+    });
+    
+    Object.values(UI.sliders).forEach(slider => slider.addEventListener('input', debounce(plotTransformation, 50)));
+    UI.transformEquation.addEventListener('input', debounce(plotTransformation, 250));
+
+    // --- UI and State Management ---
+    function handleModeChange(newType) {
+        if (newType === state.type && state.chart) return;
+        state.type = newType;
+        
+        UI.modeSwitcher.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.classList.toggle('bg-cyan-600/50', btn.dataset.mode === newType);
+            btn.classList.toggle('text-white', btn.dataset.mode === newType);
+        });
+
+        UI.controlPanels.forEach(p => p.classList.add('hidden'));
+
+        let panelIdToShow = 'standard-panel';
+        if (newType === 'transform') panelIdToShow = 'transform-panel';
+        if (newType === 'intersect') panelIdToShow = 'intersect-panel';
+
+        const panelToShow = document.getElementById(panelIdToShow);
+        if(panelToShow) {
+            panelToShow.classList.remove('hidden');
+            panelToShow.classList.add('animate-fade-in');
+        }
+
+        const isPolar = newType === 'polar';
+        const isStandard = newType === 'cartesian';
+        const isTransform = newType === 'transform';
+
+        UI.rangeLegend.textContent = isPolar ? 'Polar Range (θ in radians)' : 'Cartesian Range';
+        UI.rangeLabel1.textContent = isPolar ? 'θ Min:' : 'X-Min:';
+        UI.rangeLabel2.textContent = isPolar ? 'θ Max:' : 'X-Max:';
+        UI.xMin.value = isPolar ? 0 : -10;
+        UI.xMax.value = isPolar ? 12.56 : 10;
+        UI.step.value = isPolar ? 0.01 : 0.05;
+        UI.equationPrefix.textContent = isPolar ? 'r(t)=' : 'f(x)=';
+        UI.equation.placeholder = isPolar ? '2*cos(4*t)' : 'sin(x)*x';
+        
+        UI.analysisControls.style.display = isStandard ? 'grid' : 'none';
+        UI.plotBtn.style.display = isTransform ? 'none' : 'flex';
+        UI.plotBtnText.textContent = newType === 'intersect' ? 'Plot & Find Intersections' : 'Plot Graph';
+        
+        clearChart(true);
+        drawEmptyState();
+        if(isTransform) plotTransformation();
+    }
+
+    // --- Main Plotting Router ---
+    async function generatePlot() {
+        try {
+            toggleLoading(true, `Plotting...`);
+            const startTime = performance.now();
+            
+            let success = false; let points = 0; let equation = UI.equation.value.trim();
+            
+            switch(state.type) {
+                case 'cartesian':
+                    if (!equation) throw new Error('Please enter a function.');
+                    if (!state.history.includes(equation)) { state.history.unshift(equation); if (state.history.length > 10) state.history.pop(); updateHistoryDropdown(); }
+                    success = await plotCartesian(equation);
+                    break;
+                case 'polar':
+                    equation = UI.equation.value.trim();
+                    if (!equation) throw new Error('Please enter a polar function.');
+                    success = await plotPolar(equation);
+                    break;
+                case 'transform':
+                    success = await plotTransformation();
+                    equation = UI.transformEquation.value.trim();
+                    break;
+                case 'intersect':
+                    success = await plotIntersection();
+                    equation = `${UI.intersectEq1.value.trim()} vs ${UI.intersectEq2.value.trim()}`;
+                    break;
+            }
+
+            points = Math.floor((parseFloat(UI.xMax.value) - parseFloat(UI.xMin.value)) / parseFloat(UI.step.value)) + 1;
+            if (!success) throw new Error('Plotting failed.');
+            state.plotTime = (performance.now() - startTime).toFixed(2);
+            state.pointCount = points;
+            const memoryEstimate = (points * 2 * 8 / 1024 / 1024).toFixed(2);
+            
+            if(state.type !== 'transform' && state.type !== 'intersect') {
+                 updateResults(`Plotted: ${equation}\n` + `Range: [${UI.xMin.value}, ${UI.xMax.value}] | Step: ${UI.step.value}\n` + `Points: ${points} | Time: ${state.plotTime}ms | Memory: ~${memoryEstimate} MB`);
+            }
+            state.analysisResults = null;
+        } catch (err) {
+            updateResults(`Error: ${err.message}`, true);
+        } finally {
+            toggleLoading(false);
+        }
+    }
+
+    // --- Plotting Mode Functions ---
+    async function plotCartesian(equation) {
+        const { xMin, xMax, step, error } = getCartesianRange(); if (error) throw new Error(error);
+        const data = await generateCartesianData(equation, xMin, xMax, step); if (!data) return false;
+        createChart({ type: 'line', data: { labels: data.labels, datasets: [{ label: `f(x) = ${equation}`, data: data.values, borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.1)', fill: true, pointRadius: 0 }] } });
+        return true;
+    }
+
+    async function plotPolar(equation) {
+        const { thetaMin, thetaMax, step, error } = getPolarRange(); if (error) throw new Error(error);
+        const data = await generatePolarData(equation, thetaMin, thetaMax, step); if (!data) return false;
+        createChart({ type: 'scatter', data: { datasets: [{ label: `r(t) = ${equation}`, data: data.points, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', showLine: true, pointRadius: 0 }] }, options: { aspectRatio: 1, scales: { x: { title: { text: 'x' } }, y: { title: { text: 'y' } } } } });
+        return true;
+    }
+
+    async function plotTransformation() {
+        const baseEq = UI.transformEquation.value.trim();
+        if (!baseEq) { clearChart(); drawEmptyState(); return false; }
+
+        const { a, b, c, d } = { a: parseFloat(UI.sliders.a.value), b: parseFloat(UI.sliders.b.value), c: parseFloat(UI.sliders.c.value), d: parseFloat(UI.sliders.d.value) };
+        UI.sliderVals.a.textContent = a.toFixed(2); UI.sliderVals.b.textContent = b.toFixed(2); UI.sliderVals.c.textContent = c.toFixed(2); UI.sliderVals.d.textContent = d.toFixed(2);
+
+        const transformedLabel = `g(x) = ${a.toFixed(2)} * f(${b.toFixed(2)} * (x - ${c.toFixed(2)})) + ${d.toFixed(2)}`;
+        UI.transformedEquationDisplay.textContent = transformedLabel.replace('f', `(${baseEq.replace(/x/g, '')})`);
+        
+        const { xMin, xMax, step } = getCartesianRange();
+        let baseCompiled;
+        try {
+            baseCompiled = state.expressionCache.get(baseEq) || math.parse(baseEq).compile();
+            state.expressionCache.set(baseEq, baseCompiled);
+        } catch (err) {
+            updateResults(`Invalid base function: ${err.message}`, true);
+            return false;
+        }
+        
+        const baseData = { labels: [], values: [] };
+        const transformedData = { labels: [], values: [] };
+
+        for (let x = xMin; x <= xMax + 1e-10; x += step) {
+            const currentX = parseFloat(x.toFixed(3));
+            baseData.labels.push(currentX);
+            transformedData.labels.push(currentX);
+
+            const yBase = await baseCompiled.evaluate({ x });
+            baseData.values.push(isFinite(yBase) ? yBase : null);
+            
+            let yTransformed = null;
+            if (Math.abs(b) > 1e-9) { // FIX: Check if b is not effectively zero
+                const transformedX = b * (x - c);
+                yTransformed = a * (await baseCompiled.evaluate({ x: transformedX })) + d;
+            } else { // If b is zero, the function is a constant horizontal line
+                const constantX = 0; // Evaluate f(0) for the constant line value
+                yTransformed = a * (await baseCompiled.evaluate({ x: constantX })) + d;
+            }
+            
+            transformedData.values.push(isFinite(yTransformed) ? yTransformed : null);
+        }
+        
+        createChart({
+            type: 'line',
+            data: {
+                labels: baseData.labels,
+                datasets: [
+                    { label: `f(x) = ${baseEq}`, data: baseData.values, borderColor: '#64748b', backgroundColor: 'rgba(100, 116, 139, 0.1)', fill: false, borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                    { label: `Transformed g(x)`, data: transformedData.values, borderColor: '#22d3ee', backgroundColor: 'rgba(34, 211, 238, 0.1)', fill: true, pointRadius: 0 }
+                ]
+            }
+        });
+        updateResults(transformedLabel);
+        return true;
+    }
+
+    async function plotIntersection() {
+        const eq1 = UI.intersectEq1.value.trim();
+        const eq2 = UI.intersectEq2.value.trim();
+        if (!eq1 || !eq2) throw new Error('Please enter two functions to find intersections.');
+
+        const { xMin, xMax, step } = getCartesianRange();
+        const data1 = await generateCartesianData(eq1, xMin, xMax, step);
+        const data2 = await generateCartesianData(eq2, xMin, xMax, step);
+        if (!data1 || !data2) return false;
+        
+        const diffEq = `(${eq1}) - (${eq2})`;
+        const diffNode = math.parse(diffEq);
+        const intersectionXs = findRoots(diffNode, xMin, xMax, step);
+        const compiled1 = math.parse(eq1).compile();
+        const intersections = intersectionXs.map(x => ({ x, y: compiled1.evaluate({ x }) }));
+
+        createChart({
+            type: 'line',
+            data: {
+                labels: data1.labels,
+                datasets: [
+                    { label: `f(x) = ${eq1}`, data: data1.values, borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.1)', fill: false, pointRadius: 0 },
+                    { label: `g(x) = ${eq2}`, data: data2.values, borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.1)', fill: false, pointRadius: 0 },
+                    { label: 'Intersections', data: intersections, type: 'scatter', backgroundColor: '#f43f5e', pointRadius: 6, pointHoverRadius: 9, showLine: false }
+                ]
+            }
+        });
+
+        let results = `Intersections for f(x) and g(x)\n─────────────────────────\n`;
+        if (intersections.length > 0) {
+            results += intersections.map(p => `(x≈${p.x.toFixed(3)}, y≈${p.y.toFixed(3)})`).join('\n');
+        } else {
+            results += 'No intersections found in the given range.';
+        }
+        updateResults(results);
+        return true;
+    }
+
+    // --- Data Generation ---
+    async function generateCartesianData(equation, xMin, xMax, step) { try { let compiled = state.expressionCache.get(equation); if (!compiled) { compiled = math.parse(equation).compile(); state.expressionCache.set(equation, compiled); } const labels = []; const values = []; for (let x = xMin; x <= xMax + 1e-10; x += step) { labels.push(parseFloat(x.toFixed(3))); const y = await compiled.evaluate({ x }); values.push(isFinite(y) && Math.abs(y) < 1e5 ? y : null); } return { labels, values }; } catch (err) { updateResults(`Invalid function: ${err.message}`, true); return null; } }
+    async function generatePolarData(equation, thetaMin, thetaMax, step) { try { let compiled = state.expressionCache.get(equation); if (!compiled) { compiled = math.parse(equation).compile(); state.expressionCache.set(equation, compiled); } const points = []; for (let t = thetaMin; t <= thetaMax + 1e-10; t += step) { const r = await compiled.evaluate({ t }); points.push(isFinite(r) ? { x: r * math.cos(t), y: r * math.sin(t) } : { x: NaN, y: NaN }); } return { points }; } catch (err) { updateResults(`Invalid polar function: Use 't' for theta. ${err.message}`, true); return null; } }
+    
+    // --- Analysis and Helpers ---
+    function addDerivativePlot() { if (!ensureCartesianPlot()) return; const baseEq = state.chart.data.datasets[0].label.replace('f(x) = ', ''); try { const derivEq = math.derivative(baseEq, 'x').toString(); addCartesianDataset(derivEq, `f'(x) = ${derivEq}`, '#f59e0b', true); } catch (err) { updateResults(`Error: Could not calculate derivative. ${err.message}`, true); } }
+    function addIntegralPlot() { if (!ensureCartesianPlot()) return; const baseEq = state.chart.data.datasets[0].label.replace('f(x) = ', ''); try { const integralEq = math.integrate(baseEq, 'x').toString(); addCartesianDataset(integralEq, `∫f(x)dx = ${integralEq}`, '#ec4899', true); } catch (err) { updateResults(`Error: Symbolic integral not supported. ${err.message}`, true); } }
+    function analyzeFunction() { if (!ensureCartesianPlot()) return; const equation = state.chart.data.datasets[0].label.replace('f(x) = ', ''); try { const node = math.parse(equation); const deriv1 = math.derivative(node, 'x'); const { xMin, xMax, step } = getCartesianRange(); const roots = findRoots(node, xMin, xMax, step); const extrema = findRoots(deriv1, xMin, xMax, step).map(x => { const y = node.compile().evaluate({ x }); const type = math.derivative(deriv1, 'x').compile().evaluate({ x }) > 0 ? 'Min' : 'Max'; return { x, y, type }; }); const area = calculateArea(node, xMin, xMax, step); state.analysisResults = { equation, roots, extrema, area, xMin, xMax, derivative: deriv1.toString(), }; addCriticalPoints(roots, extrema); let results = `Analysis for f(x) = ${equation}\n─────────────────────────\n`; results += `Derivative: f'(x) = ${deriv1.toString()}\n`; results += `Roots: ${roots.length ? roots.map(x => `x≈${x.toFixed(3)}`).join(', ') : 'None'}\n`; results += `Extrema: ${extrema.length ? extrema.map(e => `${e.type} @ x≈${e.x.toFixed(3)}`).join(', ') : 'None'}\n`; results += `Area [${xMin} to ${xMax}]: ${area.toFixed(3)}`; updateResults(results); } catch (err) { updateResults(`Analysis failed - ${err.message}`, true); } }
+    function findRoots(node, xMin, xMax, step) { const compiled = node.compile(); const roots = []; let prevY = compiled.evaluate({ x: xMin }); for (let x = xMin + step; x <= xMax; x += step) { const y = compiled.evaluate({ x }); if (isFinite(y) && isFinite(prevY) && y * prevY <= 0) { let a = x - step, b = x; for (let i = 0; i < 10; i++) { const c = (a + b) / 2; const fc = compiled.evaluate({ x: c }); if (Math.abs(fc) < 1e-6 || (b - a) < 1e-6) { roots.push(c); break; } if (compiled.evaluate({ x: a }) * fc <= 0) { b = c; } else { a = c; } } } prevY = y; } return roots.sort((a, b) => a - b); }
+    function calculateArea(node, xMin, xMax, step) { const compiled = node.compile(); let area = 0; for (let x = xMin; x < xMax; x += step) { const y1 = compiled.evaluate({ x }); const y2 = compiled.evaluate({ x: x + step }); if (isFinite(y1) && isFinite(y2)) { area += (y1 + y2) * step / 2; } } return area; }
+    function addCriticalPoints(roots, extrema) { const datasets = [ { label: 'Roots', data: roots.map(x => ({ x, y: 0 })), backgroundColor: '#f43f5e', pointRadius: 5, pointHoverRadius: 8, showLine: false }, { label: 'Extrema', data: extrema.map(e => ({ x: e.x, y: e.y })), backgroundColor: '#10b981', pointRadius: 5, pointHoverRadius: 8, showLine: false }, ]; datasets.forEach(ds => { if (ds.data.length) state.chart.data.datasets.push(ds); }); state.chart.update(); }
+    async function addCartesianDataset(equation, label, color, fill = true) { const { xMin, xMax, step } = getCartesianRange(); const data = await generateCartesianData(equation, xMin, xMax, step); if (data) { state.chart.data.datasets.push({ label, data: data.values, borderColor: color, backgroundColor: `${color}33`, fill, pointRadius: 0 }); state.chart.update(); updateResults(`Added: ${label}`); } }
+    
+    // --- Chart and UI Functions ---
+    function createChart(config) { clearChart(true); UI.canvas.parentElement.classList.add('canvas-active'); state.chart = new Chart(ctx, { ...chartConfig, ...config, }); }
+    function clearChart(silent = false) { if (state.chart) { state.chart.destroy(); state.chart = null; } UI.canvas.parentElement.classList.remove('canvas-active'); if (!silent) updateResults('Chart cleared. Enter a new function to begin.', false); state.analysisResults = null; drawEmptyState(); }
+    function drawEmptyState() { ctx.clearRect(0, 0, UI.canvas.width, UI.canvas.height); ctx.save(); ctx.fillStyle = 'rgba(148, 163, 184, 0.5)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '20px Inter'; ctx.fillText('Select a mode and enter a function to begin.', UI.canvas.width / 2, UI.canvas.height / 2); ctx.restore(); }
+    function toggleLoading(isLoading, message = '') { UI.plotBtnText.classList.toggle('hidden', isLoading); UI.plotBtnSpinner.classList.toggle('hidden', !isLoading); UI.plotBtn.disabled = isLoading; if (isLoading) { UI.loadingText.textContent = message || 'Plotting...'; UI.loadingScreen.classList.remove('hidden', 'pointer-events-none'); setTimeout(() => { UI.loadingBox.classList.remove('scale-95', 'opacity-0'); }, 10); } else { UI.loadingBox.classList.add('scale-95', 'opacity-0'); setTimeout(() => { UI.loadingScreen.classList.add('hidden', 'pointer-events-none'); }, 300); } }
+    function updateResults(text, isError = false) { UI.results.style.opacity = 0; setTimeout(() => { UI.results.textContent = text; UI.results.classList.remove('text-emerald-400', 'text-red-400', 'text-slate-300'); if (isError) { UI.results.classList.add('text-red-400'); } else if (text.startsWith('Chart cleared')) { UI.results.classList.add('text-slate-400'); } else { UI.results.classList.add('text-emerald-400'); } UI.results.style.opacity = 1; }, 250); }
+    function updateHistoryDropdown() { UI.history.innerHTML = '<option value="">Recent Functions</option>'; state.history.forEach(eq => { const option = document.createElement('option'); option.value = eq; option.textContent = eq; UI.history.appendChild(option); }); }
+    function toggleGrid() { state.showGrid = !state.showGrid; if (state.chart) { state.chart.options.scales.x.grid.display = state.showGrid; state.chart.options.scales.y.grid.display = state.showGrid; state.chart.update(); } updateResults(`Grid ${state.showGrid ? 'enabled' : 'disabled'}`); }
+    function getRange() { const values = ['xMin', 'xMax', 'step'].map(id => { const value = document.getElementById(id).value; if (value === '') return NaN; return parseFloat(value); }); if (values.some(isNaN)) return { error: 'Range inputs must be valid numbers.' }; return { values, error: null }; }
+    function getCartesianRange() { const { values, error } = getRange(); if (error) return { error }; const [xMin, xMax, step] = values; if (xMin >= xMax) return { error: 'X-Min must be less than X-Max.' }; if (step <= 0) return { error: 'Step must be positive.' }; return { xMin, xMax, step }; }
+    function getPolarRange() { const { values, error } = getRange(); if (error) return { error }; const [thetaMin, thetaMax, step] = values; if (thetaMax <= thetaMin) return { error: 'θ Max must be greater than θ Min.' }; if (step <= 0) return { error: 'Step must be positive.' }; return { thetaMin, thetaMax, step }; }
+    function ensureCartesianPlot() { if (!state.chart || (state.type !== 'cartesian')) { updateResults('Analysis tools are only for Standard Cartesian plots.', true); return false; } return true; }
+    function exportChart() { if (!state.chart) { updateResults('No chart to export.', true); return; } toggleLoading(true, 'Generating PNG...'); const exportCanvas = document.createElement('canvas'); const chartCanvas = UI.canvas; const exportCtx = exportCanvas.getContext('2d'); const padding = 150; exportCanvas.width = chartCanvas.width + padding * 2; exportCanvas.height = chartCanvas.height + padding * 2; exportCtx.fillStyle = '#0d1931'; exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height); exportCtx.drawImage(chartCanvas, padding, padding, chartCanvas.width, chartCanvas.height); exportCtx.fillStyle = '#1e293b'; exportCtx.strokeStyle = '#334155'; exportCtx.lineWidth = 1; exportCtx.roundRect(padding, 30, chartCanvas.width, padding - 40, 12); exportCtx.fill(); exportCtx.stroke(); exportCtx.fillStyle = '#e2e8f0'; exportCtx.font = 'bold 18px Inter'; exportCtx.textAlign = 'left'; let eq = UI.equation.value; if(state.type === 'intersect') eq = `${UI.intersectEq1.value} & ${UI.intersectEq2.value}`; if(state.type === 'transform') eq = UI.transformedEquationDisplay.textContent; const title = `${state.type} Plot: ${eq || 'Unknown'}`; exportCtx.fillText(title, padding + 20, 60); exportCtx.font = '14px Inter'; let yOffset = 90; const datasets = state.chart.data.datasets; datasets.forEach((ds) => { if (!ds.hidden) { exportCtx.fillStyle = ds.borderColor || ds.backgroundColor; exportCtx.fillRect(padding + 20, yOffset - 10, 10, 10); exportCtx.fillStyle = '#e2e8f0'; exportCtx.fillText(ds.label, padding + 35, yOffset); yOffset += 20; } }); if (state.analysisResults && state.type === 'cartesian') { exportCtx.roundRect(padding, chartCanvas.height + padding, chartCanvas.width, padding - 40, 12); exportCtx.fillStyle = '#1e293b'; exportCtx.fill(); exportCtx.stroke(); exportCtx.fillStyle = '#e2e8f0'; exportCtx.font = 'bold 14px Inter'; exportCtx.fillText('Analysis', padding + 20, chartCanvas.height + padding + 25); exportCtx.font = '12px Inter'; yOffset = chartCanvas.height + padding + 45; const analysis = [ `Roots: ${state.analysisResults.roots.length ? state.analysisResults.roots.map(x => `x≈${x.toFixed(2)}`).join(', ') : 'None'}`, `Extrema: ${state.analysisResults.extrema.length ? state.analysisResults.extrema.map(e => `${e.type} @ x≈${e.x.toFixed(2)}`).join(', ') : 'None'}`, `Area [${state.analysisResults.xMin} to ${state.analysisResults.xMax}]: ${state.analysisResults.area.toFixed(3)}`, ]; analysis.forEach(line => { exportCtx.fillText(line, padding + 20, yOffset); yOffset += 18; }); } const link = document.createElement('a'); link.download = `graph_${new Date().toISOString().replace(/[:.]/g, '-')}.png`; link.href = exportCanvas.toDataURL('image/png'); link.click(); updateResults('Chart exported as PNG with details'); toggleLoading(false); }
+
+  </script>
+</body>
+<footer class="backdrop-blur-md bg-white/10 border-t border-white/20 text-gray-200 py-6 text-center">
+  <p class="text-sm drop-shadow-md mb-2">
+    Developed by <span class="font-semibold text-white">Sadeepa Lakshan</span>
+  </p>
+  
+  <div class="flex justify-center space-x-6 mb-2">
+    <!-- GitHub -->
+    <a href="https://github.com/sadeepas" target="_blank" class="hover:text-white transition">
+      <i class="fab fa-github text-xl"></i>
+    </a>
+    <!-- LinkedIn -->
+    <a href="https://www.linkedin.com/in/sadeepa-lakshan/" target="_blank" class="hover:text-white transition">
+      <i class="fab fa-linkedin text-xl"></i>
+    </a>
+    <!-- Email -->
+    <a href="mailto:sadeepapemasiri2@gmai.com" class="hover:text-white transition">
+      <i class="fas fa-envelope text-xl"></i>
+    </a>
+  </div>
+
+  <p class="text-xs text-gray-300 drop-shadow-sm">
+    © <span id="year"></span> All Rights Reserved
+  </p>
+</footer>
+
+<!-- Font Awesome (for icons) -->
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+
+<script>
+  // Auto update year
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+
+</html>
